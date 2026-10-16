@@ -1,0 +1,70 @@
+[project]
+name = "deribit-price-tracker"
+version = "1.0.0"
+description = "Collects Deribit index prices every minute and serves them via FastAPI"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp>=3.10",
+    "alembic>=1.13",
+    "asyncpg>=0.29",
+    "celery>=5.4",
+    "fastapi>=0.115",
+    "prometheus-fastapi-instrumentator>=7.0",
+    "pydantic-settings>=2.4",
+    "redis>=5.0",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "uvicorn[standard]>=0.30",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27",
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "ASYNC", "RUF", "PL"]
+ignore = [
+    "PLR0913",
+    "PLR0917",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004"]
+"migrations/**" = ["N999"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["celery.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["app.worker.tasks"]
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = ["integration: tests that need a real PostgreSQL (TEST_DATABASE_URL)"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/worker/main.py"]

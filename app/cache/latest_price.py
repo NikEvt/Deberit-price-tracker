@@ -21,7 +21,6 @@ class LatestPriceCache(Protocol):
 
 
 class NullLatestPriceCache:
-
     async def get(self, ticker: Ticker) -> PriceSnapshot | None:
         return None
 
@@ -30,7 +29,6 @@ class NullLatestPriceCache:
 
 
 class RedisLatestPriceCache:
-
     KEY_PREFIX = "prices:latest:"
 
     def __init__(self, redis: Redis, ttl_seconds: int) -> None:
@@ -65,7 +63,6 @@ class RedisLatestPriceCache:
 
 @asynccontextmanager
 async def latest_price_cache(settings: Settings) -> AsyncIterator[LatestPriceCache]:
-    
     if settings.redis_url is None:
         yield NullLatestPriceCache()
         return

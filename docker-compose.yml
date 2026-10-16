@@ -1,0 +1,106 @@
+x-app: &app
+  build: .
+  image: deribit-price-tracker:latest
+  restart: unless-stopped
+  environment:
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-prices}:${POSTGRES_PASSWORD:-prices}@postgres:5432/${POSTGRES_DB:-prices}
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: amqp://${RABBITMQ_USER:-prices}:${RABBITMQ_PASSWORD:-prices}@rabbitmq:5672//
+    COLLECT_INTERVAL_SECONDS: ${COLLECT_INTERVAL_SECONDS:-60}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-prices}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-prices}
+      POSTGRES_DB: ${POSTGRES_DB:-prices}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-prices}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-prices}
+    ports:
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrations:
+    <<: *app
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  worker:
+    <<: *app
+    command:
+      ["celery", "-A", "app.worker.main", "worker", "--loglevel=INFO", "--concurrency=2",
+       "--without-mingle", "--without-gossip"]
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    <<: *app
+    command:
+      ["celery", "-A", "app.worker.main", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: ["monitoring"]
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:

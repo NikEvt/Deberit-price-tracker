@@ -16,26 +16,18 @@ MICROSECONDS_IN_SECOND = 1_000_000
 
 
 class DeribitError(PriceTrackerError):
-    """Base class for Deribit client errors."""
+    pass
 
 
 class DeribitUnavailableError(DeribitError):
-    """Transient failure (network, timeout, 5xx). Safe to retry."""
+    pass
 
 
 class DeribitAPIError(DeribitError):
-    """Deribit rejected the request or answered with something unexpected. Retrying won't help."""
+    pass
 
 
 class DeribitClient:
-    """Async client for the public Deribit JSON-RPC over HTTP API.
-
-    Owns its `aiohttp.ClientSession`; use as an async context manager:
-
-        async with DeribitClient(base_url) as client:
-            snapshot = await client.get_index_price(Ticker.BTC_USD)
-    """
-
     def __init__(self, base_url: str, timeout_seconds: float = 10.0) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = aiohttp.ClientTimeout(total=timeout_seconds)
@@ -56,7 +48,6 @@ class DeribitClient:
             self._session = None
 
     async def get_index_price(self, ticker: Ticker) -> PriceSnapshot:
-        """Current index price of `ticker`, timestamped with Deribit's server time."""
         response = await self._call("public/get_index_price", {"index_name": ticker.value})
         try:
             price = Decimal(str(response["result"]["index_price"]))
@@ -77,7 +68,7 @@ class DeribitClient:
                 payload = await response.json(content_type=None)
         except (aiohttp.ClientError, TimeoutError) as exc:
             raise DeribitUnavailableError(f"Request to {method} failed: {exc!r}") from exc
-        except ValueError as exc:  # body is not JSON
+        except ValueError as exc:
             raise DeribitAPIError(f"Non-JSON response from {method}") from exc
 
         if not isinstance(payload, dict):
